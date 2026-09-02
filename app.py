@@ -43,7 +43,7 @@ def extract_questions_with_gemini(media_parts, raw_text_context=""):
     contents.extend(media_parts)
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
