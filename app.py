@@ -85,7 +85,11 @@ if st.session_state.stage == "upload":
             with st.spinner("Extracting questions, options, and solutions..."):
                 try:
                     # Initialize client with current active key
-                    client = genai.Client(api_key=active_key.strip())
+                    client = genai.Client(
+    api_key=active_key.strip(),
+    http_options={"extra_headers": {"x-goog-api-key": active_key.strip()}}
+)
+
 
                     media_parts = []
                     extracted_text = ""
