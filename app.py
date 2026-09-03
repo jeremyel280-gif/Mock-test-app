@@ -8,15 +8,13 @@ from pypdf import PdfReader
 from google import genai
 from google.genai import types
 
-# Initialize Gemini Client
-API_KEY = os.environ.get("GEMINI_API_KEY", "")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
-
 st.set_page_config(page_title="AI Mock Test Engine", page_icon="⏱️", layout="wide")
 
-# Session State Initialization
+# Check for API key in secrets, environment, or session state
+API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+
 if "stage" not in st.session_state:
-    st.session_state.stage = "upload"  # upload -> configure -> test -> result
+    st.session_state.stage = "upload"
 if "questions" not in st.session_state:
     st.session_state.questions = []
 if "user_answers" not in st.session_state:
@@ -26,8 +24,7 @@ if "start_time" not in st.session_state:
 if "duration_secs" not in st.session_state:
     st.session_state.duration_secs = 600
 
-def extract_questions_with_gemini(media_parts, raw_text_context=""):
-    """Extracts structured questions from text/images via Gemini structured output."""
+def extract_questions_with_gemini(client, media_parts, raw_text_context=""):
     prompt = """
     Extract all multiple choice questions from this content.
     Ensure:
@@ -43,7 +40,7 @@ def extract_questions_with_gemini(media_parts, raw_text_context=""):
     contents.extend(media_parts)
 
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-2.0-flash",
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -71,11 +68,9 @@ if st.session_state.stage == "upload":
     st.title("📄 Image & PDF Question Paper to Mock Test")
     st.caption("Upload question paper files to convert them into structured text and launch a timed test.")
 
-    if not API_KEY:
-        st.warning("⚠️ Please configure GEMINI_API_KEY in your environment or enter it below.")
-        user_key = st.text_input("Gemini API Key:", type="password")
-        if user_key:
-            client = genai.Client(api_key=user_key)
+    active_key = API_KEY
+    if not active_key:
+        active_key = st.text_input("Gemini API Key:", type="password")
 
     uploaded_files = st.file_uploader(
         "Upload Question Papers (Images or PDF):", 
@@ -84,30 +79,36 @@ if st.session_state.stage == "upload":
     )
 
     if uploaded_files and st.button("🚀 Extract Questions & Build Mock"):
-        with st.spinner("Extracting questions, options, and solutions..."):
-            media_parts = []
-            extracted_text = ""
+        if not active_key:
+            st.error("Please provide a Gemini API Key to continue.")
+        else:
+            with st.spinner("Extracting questions, options, and solutions..."):
+                try:
+                    # Initialize client with current active key
+                    client = genai.Client(api_key=active_key.strip())
 
-            for file in uploaded_files:
-                if file.type == "application/pdf":
-                    pdf_reader = PdfReader(BytesIO(file.read()))
-                    for page in pdf_reader.pages:
-                        extracted_text += (page.extract_text() or "") + "\n"
-                else:
-                    img = Image.open(file)
-                    media_parts.append(img)
+                    media_parts = []
+                    extracted_text = ""
 
-            try:
-                parsed_questions = extract_questions_with_gemini(media_parts, extracted_text)
-                if parsed_questions:
-                    st.session_state.questions = parsed_questions
-                    st.session_state.user_answers = {i: None for i in range(len(parsed_questions))}
-                    st.session_state.stage = "configure"
-                    st.rerun()
-                else:
-                    st.error("No questions could be identified. Please try a clearer scan.")
-            except Exception as e:
-                st.error(f"Error during extraction: {e}")
+                    for file in uploaded_files:
+                        if file.type == "application/pdf":
+                            pdf_reader = PdfReader(BytesIO(file.read()))
+                            for page in pdf_reader.pages:
+                                extracted_text += (page.extract_text() or "") + "\n"
+                        else:
+                            img = Image.open(file)
+                            media_parts.append(img)
+
+                    parsed_questions = extract_questions_with_gemini(client, media_parts, extracted_text)
+                    if parsed_questions:
+                        st.session_state.questions = parsed_questions
+                        st.session_state.user_answers = {i: None for i in range(len(parsed_questions))}
+                        st.session_state.stage = "configure"
+                        st.rerun()
+                    else:
+                        st.error("No questions could be identified. Please try a clearer scan.")
+                except Exception as e:
+                    st.error(f"Error during extraction: {e}")
 
 # -----------------------------------------------------------------------------
 # STAGE 2: REVIEW & TEST SETTINGS
@@ -148,7 +149,6 @@ elif st.session_state.stage == "test":
     elapsed = time.time() - st.session_state.start_time
     remaining = int(st.session_state.duration_secs - elapsed)
 
-    # Time up check
     if remaining <= 0:
         st.warning("⏰ Time is up! Submitting your test automatically...")
         st.session_state.stage = "result"
@@ -156,18 +156,14 @@ elif st.session_state.stage == "test":
 
     mins, secs = divmod(remaining, 60)
     
-    # Top Header with Timer
     col_title, col_time = st.columns([3, 1])
     with col_title:
         st.title("📝 Mock Test in Progress")
     with col_time:
         st.metric("⏳ Time Remaining", f"{mins:02d}:{secs:02d}")
 
-    # Render Questions
     for idx, q in enumerate(st.session_state.questions):
         st.subheader(f"Q{idx + 1}. {q['question']}")
-        
-        # Radio group for options
         selected_idx = st.radio(
             f"Select answer for Q{idx+1}:",
             options=range(len(q["options"])),
@@ -184,7 +180,6 @@ elif st.session_state.stage == "test":
             st.session_state.stage = "result"
             st.rerun()
 
-    # Heartbeat reruns to update countdown smoothly
     time.sleep(1)
     st.rerun()
 
@@ -210,7 +205,6 @@ elif st.session_state.stage == "result":
     total_score = (correct * st.session_state.pos_marks) - (wrong * st.session_state.neg_marks)
     max_score = len(st.session_state.questions) * st.session_state.pos_marks
 
-    # Metrics
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Final Score", f"{total_score:.2f} / {max_score}")
     c2.metric("Correct", f"{correct} (+{correct * st.session_state.pos_marks})")
@@ -221,8 +215,6 @@ elif st.session_state.stage == "result":
     for idx, q in enumerate(st.session_state.questions):
         user_ans = st.session_state.user_answers.get(idx)
         is_correct = user_ans == q["correct_answer"]
-        
-        box_type = "green" if is_correct else ("red" if user_ans is not None else "gray")
         status_label = "✅ Correct" if is_correct else ("❌ Incorrect" if user_ans is not None else "⚪ Skipped")
 
         with st.expander(f"Q{idx+1}: {status_label} - {q['question'][:80]}..."):
