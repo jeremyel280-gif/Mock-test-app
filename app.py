@@ -84,8 +84,11 @@ if st.session_state.stage == "upload":
         else:
             with st.spinner("Extracting questions, options, and solutions..."):
                 try:
-                    # Clean client initialization
-                    client = genai.Client(api_key=active_key.strip())
+                    # Fix for AQ. keys requiring the explicit x-goog-api-key header
+                    client = genai.Client(
+                        api_key=active_key.strip(),
+                        http_options={"headers": {"x-goog-api-key": active_key.strip()}}
+                    )
 
                     media_parts = []
                     extracted_text = ""
@@ -236,4 +239,3 @@ elif st.session_state.stage == "result":
         st.session_state.questions = []
         st.session_state.user_answers = {}
         st.rerun()
-            
