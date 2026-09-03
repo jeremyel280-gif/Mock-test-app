@@ -40,7 +40,7 @@ def extract_questions_with_gemini(client, media_parts, raw_text_context=""):
     contents.extend(media_parts)
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -84,13 +84,8 @@ if st.session_state.stage == "upload":
         else:
             with st.spinner("Extracting questions, options, and solutions..."):
                 try:
-                    # Initialize client with current active key
-                    client = genai.Client(
-    api_key=active_key.strip(),
-    http_options={"headers": {"x-goog-api-key": active_key.strip()}}
-)
-
-
+                    # Clean client initialization
+                    client = genai.Client(api_key=active_key.strip())
 
                     media_parts = []
                     extracted_text = ""
@@ -241,3 +236,4 @@ elif st.session_state.stage == "result":
         st.session_state.questions = []
         st.session_state.user_answers = {}
         st.rerun()
+            
