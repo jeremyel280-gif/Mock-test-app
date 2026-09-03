@@ -81,13 +81,18 @@ if st.session_state.stage == "upload":
     if uploaded_files and st.button("🚀 Extract Questions & Build Mock"):
         if not active_key:
             st.error("Please provide a Gemini API Key to continue.")
+        # Failsafe: Check if the key was copied with literal dots
+        elif active_key.strip().endswith("..."):
+            st.error("❌ Your API Key ends in '...'. You copied the shortened display text! Please go to Google AI Studio and click the actual Copy icon.")
         else:
             with st.spinner("Extracting questions, options, and solutions..."):
                 try:
                     # Fix for AQ. keys requiring the explicit x-goog-api-key header
                     client = genai.Client(
                         api_key=active_key.strip(),
-                        http_options={"headers": {"x-goog-api-key": active_key.strip()}}
+                        http_options=types.HttpOptions(
+                            headers={"x-goog-api-key": active_key.strip()}
+                        )
                     )
 
                     media_parts = []
