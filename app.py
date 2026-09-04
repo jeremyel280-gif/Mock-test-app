@@ -10,7 +10,7 @@ from google.genai import types
 
 st.set_page_config(page_title="AI Mock Test Engine", page_icon="⏱️", layout="wide")
 
-# Check for API key in secrets, environment, or session state
+# Check for API key in secrets or environment variable
 API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
 
 if "stage" not in st.session_state:
@@ -40,7 +40,7 @@ def extract_questions_with_gemini(client, media_parts, raw_text_context=""):
     contents.extend(media_parts)
 
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-2.5-flash",
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -81,19 +81,13 @@ if st.session_state.stage == "upload":
     if uploaded_files and st.button("🚀 Extract Questions & Build Mock"):
         if not active_key:
             st.error("Please provide a Gemini API Key to continue.")
-        # Failsafe: Check if the key was copied with literal dots
         elif active_key.strip().endswith("..."):
-            st.error("❌ Your API Key ends in '...'. You copied the shortened display text! Please go to Google AI Studio and click the actual Copy icon.")
+            st.error("❌ Your API Key ends in '...'. You copied the shortened display text! Please copy the full key from Google AI Studio.")
         else:
             with st.spinner("Extracting questions, options, and solutions..."):
                 try:
-                    # Fix for AQ. keys requiring the explicit x-goog-api-key header
-                    client = genai.Client(
-                        api_key=active_key.strip(),
-                        http_options=types.HttpOptions(
-                            headers={"x-goog-api-key": active_key.strip()}
-                        )
-                    )
+                    # Clean client initialization without http_options overrides
+                    client = genai.Client(api_key=active_key.strip())
 
                     media_parts = []
                     extracted_text = ""
